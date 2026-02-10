@@ -1,11 +1,8 @@
 <?xml version="1.0"?>
 <xml xmlns:ac="sample_namespace" xmlns:ri="sample_second_namespace">
-	{{Info###BREAK###
- |title = Some nice title###BREAK###
- |body = ###BREAK###
-
+	<blockquote class="is-info"><p><strong>Some nice title</strong></p>
 			<h3>Some heading:</h3>
-			<ol>
+			<ol xmlns:ac="sample_namespace" xmlns:ri="sample_second_namespace">
 				<li>
 					<ac:image>
 						<ri:attachment ri:filename="someFile.png">
@@ -21,6 +18,5 @@
 					</ac:image> some other inline text
 				</li>
 			</ol>
-		}}###BREAK###
-
+		</blockquote>
 </xml>

@@ -1,6 +1,6 @@
 <xml xmlns:ac="sample_namespace">
-    <div class="details" data-id="Lorem" data-something="we have never seen before">
+    <details><summary>Lorem</summary>
         <h3>Ipsum dolor</h3>
         <h3>There may be multiple rich texts</h3>
-    </div>
+    </details>
 </xml>

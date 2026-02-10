@@ -1,31 +1,31 @@
 <xml xmlns:ac="sample_namespace" xmlns:ri="sample_second_namespace">
     <div>
-        [[ABC:Page_Title|Link to another Confluence Page]]
+        [Link to another Confluence Page](/abc/page-title)
     </div>
 
     <div>
-        [[ABC:Page_Title2|Page Title2]]
+        [page title2](/abc/page-title2)
     </div>
 
     <div>
-        [[DEVOPS:Page_Title3|Link to a Confluence Page in another space]]
+        [Link to a Confluence Page in another space](/devops/page-title3)
     </div>
 
     <div>
-        [[DEVOPS:Page_Title3|Page Title3]]
+        [page title3](/devops/page-title3)
     </div>
 
 	<div>
-        [[DEVOPS:Page_Title3/Test|Test]]
+        [test](/devops/page-title3/test)
     </div>
 
     <div>
-        [[Confluence----1---Page_Title4|Confluence----1---Page Title4]][[Category:Broken_page_link]]
+        [confluence    1   page title4](/confluence----1---page-title4)&lt;!-- Broken page link --&gt;
     </div>
 
     <div>
-        [[ABC:Test/Page_Title5|Page Title5]]
-        [[Page_Title6|Page Title6]]
-        [[Test/Page_Title7|Page Title7]]
+        [page title5](/abc/test/page-title5)
+        [page title6](/page-title6)
+        [page title7](/test/page-title7)
     </div>
 </xml>

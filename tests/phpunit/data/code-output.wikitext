@@ -1,10 +1,16 @@
-<h6>The menu</h6><syntaxhighlight lang="sql" data-collapse="true">
+<h6>The menu</h6>```sql
+
 		SELECT * FROM menu;
-		</syntaxhighlight>
-<h6>JSON test</h6><syntaxhighlight lang="json" data-collapse="true">
+		
+```
+<h6>JSON test</h6>```json
+
 		{
 			"name": "test",
 			"version": "null"
 		}
-		</syntaxhighlight>
-<h6>Some SQL</h6><syntaxhighlight lang="sql" data-collapse="true"></syntaxhighlight>[[Category:Broken_macro/code/empty]]
+		
+```
+<h6>Some SQL</h6><!-- Broken code macro: Broken_macro/code/empty -->
+```
+```
