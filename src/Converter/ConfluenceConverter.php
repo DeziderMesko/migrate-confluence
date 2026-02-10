@@ -7,6 +7,7 @@ use DOMElement;
 use DOMNode;
 use DOMXPath;
 use HalloWelt\MediaWiki\Lib\Migration\Converter\PandocHTML;
+use HalloWelt\MigrateConfluence\Converter\PandocMarkdown;
 use HalloWelt\MediaWiki\Lib\Migration\DataBuckets;
 use HalloWelt\MediaWiki\Lib\Migration\IOutputAwareInterface;
 use HalloWelt\MediaWiki\Lib\Migration\Workspace;
@@ -61,7 +62,7 @@ use HalloWelt\MigrateConfluence\Utility\ConversionDataWriter;
 use SplFileInfo;
 use Symfony\Component\Console\Output\Output;
 
-class ConfluenceConverter extends PandocHTML implements IOutputAwareInterface {
+class ConfluenceConverter extends PandocMarkdown implements IOutputAwareInterface {
 
 	/** @var bool */
 	protected $bodyContentFile = null;
@@ -682,29 +683,32 @@ class ConfluenceConverter extends PandocHTML implements IOutputAwareInterface {
 	}
 
 	/**
+	 * Post-process Markdown text
 	 *
 	 * @return void
 	 */
 	private function postprocessWikiText() {
-		// On Windows the CR would be encoded as "&#xD;" in the MediaWiki-XML, which is ulgy and unnecessary
+		// On Windows the CR would be encoded differently, normalize to LF
 		$this->wikiText = str_replace( "\r", '', $this->wikiText );
+
+		// Restore line breaks that were preserved through conversion
 		$this->wikiText = str_replace( "###BREAK###", "\n", $this->wikiText );
-		$this->wikiText = str_replace( "\n {{", "\n{{", $this->wikiText );
-		$this->wikiText = str_replace( "\n }}", "\n}}", $this->wikiText );
-		$this->wikiText = str_replace( "\n- ", "\n* ", $this->wikiText );
+
+		// Decode HTML entities for tags that should remain as HTML in Markdown
 		$this->wikiText = preg_replace_callback(
 			[
-				// This is just for "TaskList", as it will add XML as TextNode.
-				// It should be removed as soon as TaskList is properly converted.
+				// TaskList specific
 				"#&lt;span.*?&gt;#si",
 				"#&lt;/span&gt;#si",
 				"#&lt;div.*?&gt;#si",
 				"#&lt;/div&gt;#si",
-				// End TaskList specific
-
-				"#&lt;headertabs /&gt;#si",
-				"#&lt;subpages(.*?)/&gt;#si",
-				"#&lt;img(.*?)/&gt;#s"
+				// Image tags
+				"#&lt;img(.*?)/&gt;#s",
+				// Details/summary tags
+				"#&lt;details&gt;#si",
+				"#&lt;/details&gt;#si",
+				"#&lt;summary&gt;#si",
+				"#&lt;/summary&gt;#si"
 			],
 			static function ( $aMatches ) {
 				return html_entity_decode( $aMatches[0] );
@@ -714,7 +718,7 @@ class ConfluenceConverter extends PandocHTML implements IOutputAwareInterface {
 
 		$this->wikiText .= $this->addAdditionalAttachments();
 
-		$this->wikiText .= "\n <!-- From bodyContent {$this->rawFile->getBasename()} -->";
+		$this->wikiText .= "\n<!-- From bodyContent {$this->rawFile->getBasename()} -->";
 	}
 
 	/**
@@ -737,10 +741,12 @@ class ConfluenceConverter extends PandocHTML implements IOutputAwareInterface {
 			$attachmentList = [];
 			foreach ( $attachmentsMap[$this->currentPageTitle] as $attachmentFileName ) {
 				$mediaLink = $linkProcessor->makeLink( [ $attachmentFileName ] );
-				$matches = [];
-				preg_match( "#\[\[\s*(Media):(.*?)\s*[\|*|\]\]]#im", $mediaLink, $matches );
 
-				if ( in_array( $matches[2], $mediaExludeList ) ) {
+				// Extract filename from Markdown link format [label](/uploads/filename)
+				$matches = [];
+				preg_match( "#\[.*?\]\(/uploads/(.*?)\)#im", $mediaLink, $matches );
+
+				if ( isset( $matches[1] ) && in_array( $matches[1], $mediaExludeList ) ) {
 					continue;
 				}
 
@@ -748,11 +754,11 @@ class ConfluenceConverter extends PandocHTML implements IOutputAwareInterface {
 			}
 
 			if ( !empty( $attachmentList ) ) {
-				$wikiText .= "\n{{AttachmentsSectionStart}}\n";
+				$wikiText .= "\n## Attachments\n\n";
 				foreach ( $attachmentList as $attachment ) {
 					$wikiText .= "* $attachment\n";
 				}
-				$wikiText .= "\n{{AttachmentsSectionEnd}}\n";
+				$wikiText .= "\n";
 			}
 		}
 
@@ -765,13 +771,12 @@ class ConfluenceConverter extends PandocHTML implements IOutputAwareInterface {
 	 * @return array
 	 */
 	private function buildMediaExcludeList( $wikiText ): array {
-		$excludes = [ 'File', 'Media' ];
-
+		// Extract filenames from Markdown image and link syntax
+		// Matches: ![alt](/uploads/filename) or [label](/uploads/filename)
 		$matches = [];
-		$excludes = implode( '|', $excludes );
-		preg_match_all( "#\[\[\s*(File|Media):(.*?)\s*[\|*|\]\]]#im", $wikiText, $matches );
+		preg_match_all( "#\[.*?\]\(/uploads/(.*?)(\{.*?\})?\)#im", $wikiText, $matches );
 		$exludeList = [];
-		foreach ( $matches[2] as $match ) {
+		foreach ( $matches[1] as $match ) {
 			$exludeList[] = $match;
 		}
 

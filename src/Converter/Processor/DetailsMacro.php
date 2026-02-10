@@ -6,6 +6,8 @@ use DOMDocument;
 use HalloWelt\MigrateConfluence\Converter\IProcessor;
 
 /**
+ * Converts Confluence details macros to HTML details/summary elements
+ *
  * <ac:structured-macro ac:name="details" ac:schema-version="1" ac:macro-id="...">
  *   <ac:parameter ac:name="id">control</ac:parameter>
  *     <ac:rich-text-body>
@@ -17,6 +19,14 @@ use HalloWelt\MigrateConfluence\Converter\IProcessor;
  *     </ac:rich-text-body>
  *     ...
  * </ac:structured-macro>
+ *
+ * Becomes:
+ * <details>
+ *   <summary>Details</summary>
+ *   <h3>Control details</h3>
+ *   <table>...</table>
+ *   <h3>There may be multiple rich texts</h3>
+ * </details>
  */
 class DetailsMacro implements IProcessor {
 
@@ -47,17 +57,27 @@ class DetailsMacro implements IProcessor {
 		foreach ( $actualMacros as $actualMacro ) {
 			$parentNode = $actualMacro->parentNode;
 
-			$detailsDiv = $dom->createElement( 'div' );
-			$detailsDiv->setAttribute( 'class', 'details' );
+			// Create details element
+			$details = $dom->createElement( 'details' );
 
-			// Extract scalar parameters, store them as data attributes of 'div'
+			// Extract parameters to find a title (if any)
 			$parameterEls = $actualMacro->getElementsByTagName( 'parameter' );
+			$title = 'Details';
 			foreach ( $parameterEls as $parameterEl ) {
 				$paramName = $parameterEl->getAttribute( 'ac:name' );
 				$paramValue = $parameterEl->nodeValue;
 
-				$detailsDiv->setAttribute( "data-$paramName", $paramValue );
+				// Use 'id' or 'title' parameter as the summary text if available
+				if ( $paramName === 'title' || $paramName === 'id' ) {
+					$title = trim( $paramValue );
+				}
 			}
+
+			// Create summary element
+			$summary = $dom->createElement( 'summary' );
+			$summaryText = $dom->createTextNode( $title );
+			$summary->appendChild( $summaryText );
+			$details->appendChild( $summary );
 
 			// Extract rich text bodies
 			/** @var DOMNodeList $richTextBodies */
@@ -77,14 +97,12 @@ class DetailsMacro implements IProcessor {
 						if ( $richTextBodyChildEl === $actualMacro ) {
 							continue;
 						}
-						$detailsDiv->appendChild( $richTextBodyChildEl );
+						$details->appendChild( $richTextBodyChildEl );
 					}
 				}
 			}
 
-			$parentNode->insertBefore( $detailsDiv, $actualMacro );
-
-			$parentNode->removeChild( $actualMacro );
+			$parentNode->replaceChild( $details, $actualMacro );
 		}
 	}
 }

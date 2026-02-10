@@ -65,7 +65,7 @@ class Image implements IProcessor {
 	 * @return void
 	 */
 	private function doProcessImage( $node ): void {
-		$replacementNode = $node->ownerDocument->createTextNode( '[[Category:Broken_image]]' );
+		$replacementNode = $node->ownerDocument->createTextNode( '<!-- Broken image -->' );
 
 		if ( $node instanceof DOMElement ) {
 			foreach ( $node->childNodes as $childNode ) {
@@ -345,7 +345,7 @@ class Image implements IProcessor {
 
 		$link = $node->parentNode;
 		if ( $link instanceof DOMElement === false ) {
-			$brokenLinkInfo = '[[Category:Broken_image_external_link]]';
+			$brokenLinkInfo = '<!-- Broken image external link -->';
 		} else {
 			$target = $link->getAttribute( 'href' );
 		}
@@ -426,7 +426,75 @@ class Image implements IProcessor {
 	 * @return string
 	 */
 	private function getImageReplacement( $params ): string {
-		return '[[File:' . implode( '|', $params ) . ']]';
+		// params[0] is the filename
+		// Additional params may include dimensions, alignment, etc.
+
+		if ( empty( $params ) || empty( $params[0] ) ) {
+			return '';
+		}
+
+		$filename = array_shift( $params );
+		$path = '/uploads/' . $filename;
+
+		// Extract alt text, width/height from remaining params
+		$alt = '';
+		$width = '';
+		$attributes = [];
+
+		foreach ( $params as $param ) {
+			// Check for link= parameter (image wrapped in link)
+			if ( strpos( $param, 'link=' ) === 0 ) {
+				$attributes['link'] = substr( $param, 5 );
+			}
+			// Check for dimensions like "300px" or "300x200px"
+			elseif ( preg_match( '/^(\d+)(x(\d+))?px$/', $param, $matches ) ) {
+				$width = $matches[1];
+			}
+			// Ignore alignment and thumb params for basic Markdown
+			elseif ( !in_array( $param, [ 'thumb', 'left', 'right', 'center', 'none' ] ) ) {
+				// Use remaining params as alt text
+				if ( $alt === '' ) {
+					$alt = $param;
+				}
+			}
+		}
+
+		// Build Markdown image syntax
+		$markdown = '![' . $alt . '](' . $path . ')';
+
+		// Add width attribute if specified (using Wiki.js extended syntax)
+		if ( $width !== '' ) {
+			$markdown .= '{width=' . $width . '}';
+		}
+
+		// If image has a link, wrap it in Markdown link syntax
+		if ( isset( $attributes['link'] ) ) {
+			$linkTarget = $attributes['link'];
+			// Convert MediaWiki-style page links to paths
+			if ( strpos( $linkTarget, 'http' ) !== 0 ) {
+				// It's an internal page link, convert to path
+				$linkTarget = $this->convertTitleToPath( $linkTarget );
+			}
+			$markdown = '[' . $markdown . '](' . $linkTarget . ')';
+		}
+
+		return $markdown;
+	}
+
+	/**
+	 * Convert MediaWiki-style title to Wiki.js path
+	 *
+	 * @param string $title
+	 * @return string
+	 */
+	private function convertTitleToPath( string $title ): string {
+		$path = str_replace( ':', '/', $title );
+		$path = strtolower( $path );
+		$path = str_replace( '_', '-', $path );
+		if ( substr( $path, 0, 1 ) !== '/' ) {
+			$path = '/' . $path;
+		}
+		return $path;
 	}
 
 	/**

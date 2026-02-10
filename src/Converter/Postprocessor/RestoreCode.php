@@ -9,26 +9,28 @@ class RestoreCode implements IPostprocessor {
 	/**
 	 * @inheritDoc
 	 */
-	public function postprocess( string $wikiText ): string {
-		$wikiText = preg_replace_callback(
+	public function postprocess( string $markdown ): string {
+		$markdown = preg_replace_callback(
 			'#<pre class="PRESERVESYNTAXHIGHLIGHT"(.*?)>(.*?)</pre>#si', function ( $matches ) {
 				$attribs = $this->getAttributes( $matches[1] );
 
 				if ( isset( $attribs['data-broken-macro'] ) ) {
-					$code = '[[Category:' . $attribs['data-broken-macro'] . ']]';
-					unset( $attribs['data-broken-macro'] );
-					$params = $this->buildAttributes( $attribs );
-					return '<syntaxhighlight' . $params . '></syntaxhighlight>' . $code;
-				} else {
-					$code = base64_decode( $matches[2] );
+					// For broken macros, add a comment with the category
+					$category = $attribs['data-broken-macro'];
+					return "<!-- Broken code macro: $category -->\n```\n```";
 				}
 
-				return '<syntaxhighlight' . $matches[1] . '>' . $code . '</syntaxhighlight>';
+				$code = base64_decode( $matches[2] );
+				$lang = $attribs['lang'] ?? '';
+
+				// Create fenced code block with language specifier
+				// Format: ```lang\ncode\n```
+				return '```' . $lang . "\n" . $code . "\n" . '```';
 			},
-			$wikiText
+			$markdown
 		);
 
-		return $wikiText;
+		return $markdown;
 	}
 
 	/**

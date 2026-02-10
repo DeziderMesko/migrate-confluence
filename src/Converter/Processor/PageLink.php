@@ -46,7 +46,7 @@ class PageLink extends LinkProcessorBase {
 			}
 
 			if ( $isBrokenLink ) {
-				$replacement .= '[[Category:Broken_page_link]]';
+				$replacement .= '<!-- Broken page link -->';
 			}
 
 			$this->replaceLink( $node, $replacement );
@@ -101,20 +101,56 @@ class PageLink extends LinkProcessorBase {
 	public function makeLink( array $linkParts ): string {
 		$linkParts = array_map( 'trim', $linkParts );
 
-		// Sometimes it could be that no label is set
-		if ( count( $linkParts ) > 1 ) {
-			$replacement = '[[' . implode( '|', $linkParts ) . ']]';
-		} else {
-			$titleParts = explode( ':', $linkParts[0] );
-			$label = array_pop( $titleParts );
-			$labelParts = explode( '/', $label );
-			$label = array_pop( $labelParts );
-			$label = str_replace( '_', ' ', $label );
+		// linkParts[0] is the target title (namespace:path/page format from MediaWiki)
+		// linkParts[1] (if present) is the link text/label
 
-			$replacement = '[[' . $linkParts[0] . '|' . $label . ']]';
+		$target = $linkParts[0];
+
+		// Convert MediaWiki-style title to Wiki.js path format
+		// "NS:Prefix/Page_Title" -> "/ns/prefix/page-title"
+		$path = $this->convertTitleToPath( $target );
+
+		// Determine link label
+		if ( count( $linkParts ) > 1 ) {
+			// Use provided label
+			$label = $linkParts[1];
+		} else {
+			// Extract label from the path (last segment, replace underscores/dashes with spaces)
+			$pathParts = explode( '/', trim( $path, '/' ) );
+			$label = array_pop( $pathParts );
+			$label = str_replace( '_', ' ', $label );
+			$label = str_replace( '-', ' ', $label );
 		}
 
+		// Create Markdown link: [label](/path)
+		$replacement = '[' . $label . '](' . $path . ')';
+
 		return $replacement;
+	}
+
+	/**
+	 * Convert MediaWiki-style title to Wiki.js path
+	 * "NS:Prefix/Page_Title" -> "/ns/prefix/page-title"
+	 *
+	 * @param string $title
+	 * @return string
+	 */
+	private function convertTitleToPath( string $title ): string {
+		// Replace colons with slashes
+		$path = str_replace( ':', '/', $title );
+
+		// Convert to lowercase
+		$path = strtolower( $path );
+
+		// Replace underscores with hyphens (Wiki.js convention)
+		$path = str_replace( '_', '-', $path );
+
+		// Ensure leading slash
+		if ( substr( $path, 0, 1 ) !== '/' ) {
+			$path = '/' . $path;
+		}
+
+		return $path;
 	}
 
 }

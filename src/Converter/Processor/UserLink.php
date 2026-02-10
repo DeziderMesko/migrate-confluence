@@ -45,7 +45,7 @@ class UserLink extends LinkProcessorBase {
 			}
 
 			if ( $isBrokenLink ) {
-				$replacement .= '[[Category:Broken_user_link]]';
+				$replacement .= '<!-- Broken user link -->';
 			}
 
 			$this->replaceLink( $node, $replacement );
@@ -58,9 +58,26 @@ class UserLink extends LinkProcessorBase {
 	 */
 	public function makeLink( array $linkParts ): string {
 		$linkParts = array_map( 'trim', $linkParts );
-		$linkBody = implode( '|', $linkParts );
-		$replacement = '[[' . $linkBody . ']]';
 
-		return $replacement;
+		// linkParts[0] is "User:username" format
+		// linkParts[1] is the username
+		// linkParts[2] (if present) is custom link text
+
+		// For Wiki.js, we can either create a user profile link or just use plain text
+		// Since Wiki.js doesn't have a standard user namespace like MediaWiki,
+		// we'll create a simple link to /user/username or just use plain text
+
+		if ( count( $linkParts ) >= 2 ) {
+			$username = $linkParts[1];
+			$label = count( $linkParts ) > 2 ? $linkParts[2] : $username;
+
+			// Option 1: Link to user profile (if Wiki.js has user profiles at /user/username)
+			// return '[' . $label . '](/user/' . strtolower( $username ) . ')';
+
+			// Option 2: Just use plain text with @ mention style
+			return '@' . $username;
+		}
+
+		return implode( ' ', $linkParts );
 	}
 }

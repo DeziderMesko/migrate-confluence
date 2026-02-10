@@ -52,7 +52,7 @@ class AttachmentLink extends LinkProcessorBase {
 			}
 
 			if ( $isBrokenLink ) {
-				$replacement .= '[[Category:Broken_attachment_link]]';
+				$replacement .= '<!-- Broken attachment link -->';
 			}
 
 			$this->replaceLink( $node, $replacement );
@@ -94,26 +94,25 @@ class AttachmentLink extends LinkProcessorBase {
 	 * @return string
 	 */
 	public function makeLink( array $linkParts ): string {
-		/*
-		* The converter only knows the context of the current page that
-		* is being converted
-		* So unfortunately we don't know the source in this context so we
-		* need to delegate this to the main migration script that has
-		* all the information from the original XML
-		*/
 		$linkParts = array_map( 'trim', $linkParts );
 
-		if ( $this->nsFileRepoCompat ) {
-			$filename = $linkParts[0];
+		// linkParts[0] is the filename
+		// linkParts[1] (if present) is the link text/label
+		$filename = $linkParts[0];
 
-			$pos = strpos( $filename, '_' );
-			if ( $pos !== false ) {
-				$namespace = substr( $filename, 0, $pos );
-				if ( $namespace !== false ) {
-					$linkParts[0] = str_replace( $namespace . '_', $namespace . ':', $filename );
-				}
-			}
+		// Create Wiki.js uploads path
+		$path = '/uploads/' . $filename;
+
+		// Determine link label
+		if ( count( $linkParts ) > 1 ) {
+			// Use provided label
+			$label = $linkParts[1];
+		} else {
+			// Use filename as label
+			$label = $filename;
 		}
-		return '[[Media:' . implode( '|', $linkParts ) . ']]';
+
+		// Create Markdown link: [label](/uploads/filename)
+		return '[' . $label . '](' . $path . ')';
 	}
 }
