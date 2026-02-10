@@ -443,7 +443,7 @@ class ConfluenceConverter extends PandocMarkdown implements IOutputAwareInterfac
 			// TODO: 'calendar', 'contributors', 'anchor',
 			// 'navitabs', 'include', 'listlabels', 'content-report-table'
 			$this->logMarkup( $match );
-			$replacement .= "[[Category:Broken_macro/$sMacroName]]";
+			$replacement .= "<!-- Broken macro: $sMacroName -->";
 		}
 
 		$parentNode = $match->parentNode;
@@ -532,16 +532,16 @@ class ConfluenceConverter extends PandocMarkdown implements IOutputAwareInterfac
 		$sContent = str_replace( '<ac:layout', '<div class="ac-layout"', $sContent );
 		$sContent = str_replace( '</ac:layout', '</div', $sContent );
 
-		// Append categories
-		$categorieMap = $this->dataBuckets->getBucketData( 'title-metadata' );
-		$categories = '';
-		if ( isset( $categorieMap[$pageId] ) && isset( $categorieMap[$pageId]['categories'] ) ) {
-			foreach ( $categorieMap[$pageId]['categories'] as $key => $category ) {
-				$category = ucfirst( $category );
-				$categories .= "[[Category:$category]]\n";
-			}
-		}
-		$sContent = str_replace( '</body>', $categories . '</body>', $sContent );
+		// Categories are handled by YAML frontmatter in WikiJsComposer, so we skip inline category tags
+		// $categorieMap = $this->dataBuckets->getBucketData( 'title-metadata' );
+		// $categories = '';
+		// if ( isset( $categorieMap[$pageId] ) && isset( $categorieMap[$pageId]['categories'] ) ) {
+		// 	foreach ( $categorieMap[$pageId]['categories'] as $key => $category ) {
+		// 		$category = ucfirst( $category );
+		// 		$categories .= "[[Category:$category]]\n";
+		// 	}
+		// }
+		// $sContent = str_replace( '</body>', $categories . '</body>', $sContent );
 
 		// phpcs:ignore Generic.Files.LineLength.TooLong
 		$sContent = '<xml xmlns:ac="some" xmlns:ri="thing" xmlns:bs="bluespice">' . $sContent . '</xml>';

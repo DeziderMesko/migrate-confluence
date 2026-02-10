@@ -19,12 +19,24 @@ class StructuredMacroJira extends StructuredMacroProcessorBase {
 	 */
 	protected function doProcessMacro( $node ): void {
 		$params = $this->readParams( $node );
-		$wikitextTemplate = new Template( $this->getWikiTextTemplateName(), $params );
-		$wikitextTemplate->setRenderFormatted( false );
+
+		// Convert to Markdown link format
+		$jiraKey = $params['key'] ?? '';
+		$jiraServer = $params['server'] ?? '';
+		$serverId = $params['serverId'] ?? '';
+
+		// Build JIRA URL - if no server is specified, use a placeholder
+		$jiraUrl = $jiraServer ?: 'https://jira.example.com';
+		$jiraUrl = rtrim( $jiraUrl, '/' );
+
+		if ( !empty( $jiraKey ) ) {
+			$markdownLink = "[$jiraKey]($jiraUrl/browse/$jiraKey)";
+		} else {
+			$markdownLink = "<!-- JIRA macro: no key specified -->";
+		}
+
 		$node->parentNode->replaceChild(
-			$node->ownerDocument->createTextNode(
-				$wikitextTemplate->render()
-			),
+			$node->ownerDocument->createTextNode( $markdownLink ),
 			$node
 		);
 	}

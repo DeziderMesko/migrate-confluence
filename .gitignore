@@ -5,3 +5,4 @@ dist/migrate-confluence.phar
 .vscode/settings.json
 composer.lock
 .claude
+real-test-data/

@@ -6,8 +6,8 @@ use HalloWelt\MigrateConfluence\Converter\IPostprocessor;
 
 class NestedHeadings implements IPostprocessor {
 
-	/** @var string */
-	private $regEx = '#(\*{1,6})\s?([=]{1,6})([^=]*)\s?([=]{1,6})#';
+	/** @var string - Matches Markdown headings like "* # Heading" or "** ## Heading" */
+	private $regEx = '/^(\*{1,6})\s?(#{1,6})\s+(.*)$/m';
 
 	/**
 	 * @inheritDoc
@@ -49,11 +49,10 @@ class NestedHeadings implements IPostprocessor {
 		preg_match( $this->regEx, $line, $matches );
 
 		if ( count( $matches ) > 0 ) {
-			$orig = $matches[0];
-			$headingLevel = $matches[2];
-			$text = $matches[3];
+			$headingMarker = $matches[2]; // e.g., "##"
+			$text = trim( $matches[3] );
 
-			$lines[$index] = $this->getHeadingReplacement( $headingLevel, $text );
+			$lines[$index] = $this->getHeadingReplacement( $headingMarker, $text );
 		}
 	}
 
@@ -68,11 +67,10 @@ class NestedHeadings implements IPostprocessor {
 		$line = $lines[$index];
 		preg_match( $this->regEx, $line, $matches );
 		while ( count( $matches ) > 0 ) {
-			$orig = $matches[0];
-			$listLevel = $matches[1];
-			$text = $matches[3];
+			$listMarker = $matches[1]; // e.g., "*" or "**"
+			$text = trim( $matches[3] );
 
-			$lines[$index] = $this->getListReplacement( $listLevel, $text );
+			$lines[$index] = $this->getListReplacement( $listMarker, $text );
 
 			$index++;
 			if ( $index >= count( $lines ) ) {
@@ -92,15 +90,15 @@ class NestedHeadings implements IPostprocessor {
 	 * @return string
 	 */
 	private function getListReplacement( $markup, $text ): string {
-		return $markup . $text;
+		return $markup . ' ' . $text;
 	}
 
 	/**
-	 * @param string $markup
+	 * @param string $markup - Markdown heading marker like "##"
 	 * @param string $text
 	 * @return string
 	 */
 	private function getHeadingReplacement( $markup, $text ): string {
-		return $markup . $text . $markup;
+		return $markup . ' ' . $text;
 	}
 }

@@ -9,44 +9,25 @@ class FixImagesWithExternalUrl implements IPostprocessor {
 	/**
 	 * @inheritDoc
 	 */
-	public function postprocess( string $wikiText ): string {
-		$wikiText = preg_replace_callback(
-			"/\[\[File:(http[s]?:\/\/.*)]]/",
+	public function postprocess( string $markdown ): string {
+		// Fix Markdown images with external URLs: ![alt](http://...){attrs}
+		$markdown = preg_replace_callback(
+			"/!\[([^\]]*)\]\((http[s]?:\/\/[^\)]+)\)(\{[^\}]+\})?/",
 			static function ( $matches ) {
-				$attributes = [];
+				$alt = $matches[1];
+				$url = $matches[2];
+				$attrs = $matches[3] ?? '';
 
-				if ( strpos( $matches[1], '|' ) ) {
-					$params = explode( '|', $matches[1] );
-					$replacement = $params[0];
-
-					// handle attibute for height
-					for ( $index = 1; $index < count( $params ); $index++ ) {
-						if ( strpos( $params[$index], 'x', 0 ) !== false
-							&& strpos( $params[$index], 'px', strlen( $params[$index] ) - 2 ) !== false ) {
-
-							$height = [];
-							preg_match( "/([0-9]+)/", $params[$index], $height );
-							if ( count( $height ) > 0 ) {
-								$attributes[] = 'height="' . $height[1] . '"';
-							}
-						}
-					}
-				} else {
-					$replacement = $matches[1];
+				if ( !empty( $attrs ) ) {
+					// Convert {height=150} style attributes to HTML attributes
+					return '<img src="' . $url . '" alt="' . htmlspecialchars( $alt ) . '" ' . $attrs . ' />';
 				}
 
-				$attribs = implode( ' ', $attributes );
-				if ( parse_url( $attribs ) ) {
-					$attr = $attribs;
-				}
-				if ( parse_url( $matches[1] ) ) {
-					return '<img src="' . $replacement . '" ' . $attr . ' />';
-				}
-				return $matches[0];
+				return '<img src="' . $url . '" alt="' . htmlspecialchars( $alt ) . '" />';
 			},
-			$wikiText
+			$markdown
 		);
 
-		return $wikiText;
+		return $markdown;
 	}
 }

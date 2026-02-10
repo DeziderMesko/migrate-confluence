@@ -17,8 +17,9 @@ class StructuredMacroToc extends StructuredMacroProcessorBase {
 	 * @return void
 	 */
 	protected function doProcessMacro( $node ): void {
+		// Wiki.js auto-generates TOC from headings, so we remove the TOC macro entirely
 		$node->parentNode->replaceChild(
-			$node->ownerDocument->createTextNode( "\n__TOC__\n###BREAK###" ),
+			$node->ownerDocument->createTextNode( "" ),
 			$node
 		);
 	}

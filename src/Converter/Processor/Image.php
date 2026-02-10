@@ -293,7 +293,7 @@ class Image implements IProcessor {
 		$isBrokenPageLink = $imagePageLinkHelper->isBrokenLink();
 		$brokenPageLinkInfo = '';
 		if ( $isBrokenPageLink ) {
-			$brokenPageLinkInfo = '[[Category:Broken_image_page_link]]';
+			$brokenPageLinkInfo = '<!-- Broken image page link -->';
 		}
 
 		$replacementNode = $this->makeImageLinkWithDebugInfo(

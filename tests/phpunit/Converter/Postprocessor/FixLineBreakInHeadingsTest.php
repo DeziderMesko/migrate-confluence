@@ -11,20 +11,20 @@ class FixLineBreakInHeadingsTest extends TestCase {
 	 * @var array
 	 */
 	private $originalHeadings = [
-		'==<br />Heading starting with br-tag ==',
-		'== Heading with br-tag<br />in the middle ==',
-		'== Heading ending with br-tag<br />==',
-		'== Heading without br-tag =='
+		'# <br />Heading starting with br-tag',
+		'## Heading with br-tag<br />in the middle',
+		'### Heading ending with br-tag<br />',
+		'#### Heading without br-tag'
 	];
 
 	/**
 	 * @var array
 	 */
 	private $expectedHeadings = [
-		'== Heading starting with br-tag ==',
-		'== Heading with br-tag in the middle ==',
-		'== Heading ending with br-tag ==',
-		'== Heading without br-tag =='
+		'# Heading starting with br-tag',
+		'## Heading with br-tag in the middle',
+		'### Heading ending with br-tag',
+		'#### Heading without br-tag'
 	];
 
 	/**

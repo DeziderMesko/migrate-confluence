@@ -112,7 +112,7 @@ abstract class LinkProcessorBase implements IProcessor {
 	 * @return string
 	 */
 	protected function getBrokenLinkReplacement(): string {
-		return '[[Category:Broken_link]]';
+		return '<!-- Broken link -->';
 	}
 
 	/**
