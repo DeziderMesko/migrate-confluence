@@ -122,6 +122,7 @@ class ConfluenceAnalyzer extends AnalyzerBase implements LoggerAwareInterface, I
 			'attachment-orig-filename-target-filename-map',
 			'attachment-id-to-target-filename-map',
 			'filenames-to-filetitles-map',
+			'page-revision-history',
 
 			'invalid-titles',
 			'invalid-namespaces',
@@ -275,6 +276,35 @@ class ConfluenceAnalyzer extends AnalyzerBase implements LoggerAwareInterface, I
 			$read = $xmlReader->next();
 		}
 		$xmlReader->close();
+
+		// Build page revision history (including old revisions)
+		$this->output->writeln( "\nBuild page revision history:" );
+
+		$xmlReader->open( $file->getPathname() );
+		$read = $xmlReader->read();
+		while ( $read ) {
+			if ( $xmlReader->name !== 'object' ) {
+				// Usually all root nodes should be objects.
+				$read = $xmlReader->read();
+				continue;
+			}
+
+			$nodeXML = $xmlReader->readOuterXml();
+
+			$objectDom = new DOMDocument();
+			$objectDom->loadXML( $nodeXML );
+
+			$class = $xmlReader->getAttribute( 'class' );
+			if ( $class === 'Page' ) {
+				$this->buildPageRevisionHistory( $objectDom );
+			}
+
+			$read = $xmlReader->next();
+		}
+		$xmlReader->close();
+
+		// Sort and assign sequential revision numbers
+		$this->finalizePageRevisionHistory();
 
 		// Process title attachments fallback
 		$xmlReader->open( $file->getPathname() );
@@ -735,6 +765,147 @@ class ConfluenceAnalyzer extends AnalyzerBase implements LoggerAwareInterface, I
 		// Find attachments
 
 		$this->getAttachmentsFromCollection( $xmlHelper, $pageNode, $spaceId );
+	}
+
+	/**
+	 * Build page revision history for all pages (including old revisions)
+	 * @param DOMDocument $dom
+	 * @return void
+	 */
+	private function buildPageRevisionHistory( DOMDocument $dom ): void {
+		static $pageIdToTitleMap = null;
+		static $spaceIdToPrefixMap = null;
+		static $bodyContentIdToPageIdMap = null;
+
+		// Load maps only once (performance optimization)
+		if ( $pageIdToTitleMap === null ) {
+			$pageIdToTitleMap = $this->customBuckets->getBucketData( 'page-id-to-title-map' );
+			$spaceIdToPrefixMap = $this->customBuckets->getBucketData( 'space-id-to-prefix-map' );
+			$bodyContentIdToPageIdMap = $this->customBuckets->getBucketData( 'body-content-id-to-page-id-map' );
+			$this->output->writeln( "  Loaded " . count( $pageIdToTitleMap ) . " pages for revision tracking" );
+		}
+
+		$xmlHelper = new XMLHelper( $dom );
+		$pages = $xmlHelper->getObjectNodes( 'Page' );
+		if ( count( $pages ) < 1 ) {
+			return;
+		}
+		$pageNode = $pages->item( 0 );
+		if ( $pageNode instanceof DOMElement === false ) {
+			return;
+		}
+
+		$pageId = $xmlHelper->getIDNodeValue( $pageNode );
+		$spaceId = $xmlHelper->getPropertyValue( 'space', $pageNode );
+		if ( $spaceId === null ) {
+			return;
+		}
+
+		// Check if this is an old revision
+		$originalVersionID = $xmlHelper->getPropertyValue( 'originalVersion', $pageNode );
+
+		// Determine which page this revision belongs to
+		// If originalVersion is set, this is an old revision pointing to the current page
+		// If originalVersion is null, this IS the current page
+		$currentPageId = $originalVersionID !== null ? $originalVersionID : $pageId;
+
+		// Only process if the page is in the space filter (if configured)
+		if ( !isset( $spaceIdToPrefixMap[$spaceId] ) ) {
+			return;
+		}
+		$prefix = $spaceIdToPrefixMap[$spaceId];
+		if (
+			isset( $this->advancedConfig['analyzer-include-spacekey'] )
+			&& !in_array( strtolower( $prefix ), $this->advancedConfig['analyzer-include-spacekey'] )
+		) {
+			return;
+		}
+
+		// Get the target title for the current (latest) version of this page
+		if ( !isset( $pageIdToTitleMap[$currentPageId] ) ) {
+			// This page's current version wasn't processed (filtered out or invalid), skip all revisions
+			return;
+		}
+		$targetTitle = $pageIdToTitleMap[$currentPageId];
+
+		// Get revision metadata
+		$version = $xmlHelper->getPropertyValue( 'version', $pageNode );
+		$revisionTimestamp = $this->buildRevisionTimestamp( $xmlHelper, $pageNode );
+		$bodyContentIds = $this->getBodyContentIds( $xmlHelper, $pageNode );
+
+		// Fallback: look up body content IDs from the map (same logic as buildPageMaps)
+		if ( empty( $bodyContentIds ) ) {
+			$bodyContentIds = [];
+			foreach ( $bodyContentIdToPageIdMap as $bodyContentId => $contentPageId ) {
+				if ( $pageId === $contentPageId ) {
+					$bodyContentIds[] = $bodyContentId;
+				}
+			}
+		}
+
+		if ( empty( $bodyContentIds ) ) {
+			// No content for this revision, skip it
+			static $emptyCount = 0;
+			$emptyCount++;
+			if ( $emptyCount <= 5 ) {
+				$this->output->writeln( "  Skipping page $pageId (no body content)" );
+			}
+			return;
+		}
+
+		// Debug: Show first few revisions being processed
+		static $processedCount = 0;
+		$processedCount++;
+		if ( $processedCount <= 10 ) {
+			$isOld = $originalVersionID !== null ? 'OLD' : 'CURRENT';
+			$this->output->writeln( "  Processing $isOld revision: page=$pageId, version=$version, target=$targetTitle" );
+		}
+
+		$revisionData = [
+			'pageId' => $pageId,
+			'bodyContentIds' => $bodyContentIds,
+			'version' => $version,
+			'timestamp' => $revisionTimestamp,
+			'isCurrent' => $originalVersionID === null,
+		];
+
+		// Add to page-revision-history bucket
+		// Structure: targetTitle => [revision1, revision2, ...]
+		$existingRevisions = $this->customBuckets->getBucketData( 'page-revision-history' );
+		if ( !isset( $existingRevisions[$targetTitle] ) ) {
+			$existingRevisions[$targetTitle] = [];
+		}
+		$existingRevisions[$targetTitle][] = $revisionData;
+
+		$this->customBuckets->addData( 'page-revision-history', $targetTitle, $existingRevisions[$targetTitle], false, false );
+	}
+
+	/**
+	 * Sort page revisions and assign sequential numbers
+	 * @return void
+	 */
+	private function finalizePageRevisionHistory(): void {
+		$revisionHistory = $this->customBuckets->getBucketData( 'page-revision-history' );
+
+		foreach ( $revisionHistory as $targetTitle => $revisions ) {
+			// Sort by version number (ascending - oldest first)
+			usort( $revisions, static function ( $a, $b ) {
+				return $a['version'] <=> $b['version'];
+			} );
+
+			// Assign sequential revision numbers
+			$sequentialNumber = 1;
+			foreach ( $revisions as &$revision ) {
+				$revision['sequentialNumber'] = $sequentialNumber++;
+			}
+			unset( $revision );
+
+			// Update the bucket with sorted and numbered revisions
+			$this->customBuckets->addData( 'page-revision-history', $targetTitle, $revisions, false, false );
+
+			$revisionCount = count( $revisions );
+			$this->output->writeln( "  Page '$targetTitle': $revisionCount revision(s)" );
+		}
 	}
 
 	/**

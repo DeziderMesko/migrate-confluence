@@ -83,7 +83,8 @@ class WikiJsComposer implements IOutputAwareInterface {
 			'files',
 			'additional-files',
 			'page-id-to-title-map',
-			'space-id-to-prefix-map'
+			'space-id-to-prefix-map',
+			'page-revision-history'
 		] );
 
 		$this->dataBuckets->loadFromWorkspace( $this->workspace );
@@ -127,6 +128,9 @@ class WikiJsComposer implements IOutputAwareInterface {
 
 		// Process each converted page and create Markdown files
 		$this->createMarkdownPages();
+
+		// Process historical revisions
+		$this->createHistoricalRevisions();
 
 		$this->output->writeln( "\nComposition complete!" );
 		$this->output->writeln( "Output location: " . $this->resultDir );
@@ -399,5 +403,152 @@ class WikiJsComposer implements IOutputAwareInterface {
 		}
 
 		return $this->pagesDir . '/' . $path;
+	}
+
+	/**
+	 * Create Markdown files for historical revisions
+	 */
+	private function createHistoricalRevisions(): void {
+		$this->output->writeln( "\nCreating historical revision files..." );
+
+		$revisionHistory = $this->dataBuckets->getBucketData( 'page-revision-history' );
+		if ( empty( $revisionHistory ) ) {
+			$this->output->writeln( "No revision history data found." );
+			return;
+		}
+
+		$convertedDir = $this->workspacePath . '/content/wikitext';
+		$totalRevisionsExported = 0;
+
+		foreach ( $revisionHistory as $pageTitle => $revisions ) {
+			// Skip pages with only one revision (no history to export)
+			if ( count( $revisions ) <= 1 ) {
+				continue;
+			}
+
+			$exportedCount = 0;
+			foreach ( $revisions as $revision ) {
+				// Skip the current revision (already exported in main pages directory)
+				if ( $revision['isCurrent'] ) {
+					continue;
+				}
+
+				// Get the bodyContentIds (may have multiple, joined with '/')
+				$bodyContentIds = $revision['bodyContentIds'];
+				$bodyContentId = is_array( $bodyContentIds ) ? $bodyContentIds[0] : $bodyContentIds;
+
+				// Find the .wiki file for this revision
+				$wikiFile = $convertedDir . '/' . $bodyContentId . '.wiki';
+
+				if ( !file_exists( $wikiFile ) ) {
+					$this->output->writeln( "  Warning: File not found for revision: $wikiFile" );
+					continue;
+				}
+
+				// Read the converted Markdown content
+				$markdown = file_get_contents( $wikiFile );
+
+				// Build frontmatter with revision metadata
+				$frontmatter = $this->buildRevisionFrontmatter( $pageTitle, $revision );
+
+				// Create the full content
+				$fullContent = $frontmatter . "\n" . $markdown;
+
+				// Determine output path for historical revision
+				$outputPath = $this->getHistoricalRevisionPath( $pageTitle, $revision['sequentialNumber'] );
+
+				// Ensure directory exists
+				$outputDir = dirname( $outputPath );
+				if ( !is_dir( $outputDir ) ) {
+					mkdir( $outputDir, 0755, true );
+				}
+
+				// Write the file
+				file_put_contents( $outputPath, $fullContent );
+
+				$exportedCount++;
+				$totalRevisionsExported++;
+			}
+
+			if ( $exportedCount > 0 ) {
+				$this->output->writeln( "  Exported $exportedCount historical revision(s) for: $pageTitle" );
+			}
+		}
+
+		$this->output->writeln( "Exported $totalRevisionsExported historical revisions total." );
+	}
+
+	/**
+	 * Build YAML frontmatter for a historical revision
+	 *
+	 * @param string $pageTitle
+	 * @param array $revision
+	 * @return string
+	 */
+	private function buildRevisionFrontmatter( string $pageTitle, array $revision ): string {
+		// Extract clean title (remove namespace prefix)
+		$displayTitle = $this->getDisplayTitle( $pageTitle );
+
+		// Build frontmatter data
+		$frontmatterData = [
+			'title' => $displayTitle,
+			'description' => '',
+			'revision' => $revision['sequentialNumber'],
+			'version' => $revision['version'],
+		];
+
+		// Add tags if configured
+		$tags = $this->getTags( $pageTitle );
+		if ( !empty( $tags ) ) {
+			$frontmatterData['tags'] = $tags;
+		}
+
+		// Convert timestamp to ISO 8601 format
+		if ( isset( $revision['timestamp'] ) ) {
+			$timestamp = $revision['timestamp'];
+			// Convert timestamp format 20250310231236 to ISO 8601
+			if ( strlen( $timestamp ) >= 14 ) {
+				$year = substr( $timestamp, 0, 4 );
+				$month = substr( $timestamp, 4, 2 );
+				$day = substr( $timestamp, 6, 2 );
+				$hour = substr( $timestamp, 8, 2 );
+				$minute = substr( $timestamp, 10, 2 );
+				$second = substr( $timestamp, 12, 2 );
+				$isoDate = "$year-$month-$day" . "T" . "$hour:$minute:$second" . "Z";
+				$frontmatterData['date'] = $isoDate;
+			}
+		}
+
+		// Convert to YAML
+		$yaml = Yaml::dump( $frontmatterData, 2, 2 );
+
+		return "---\n" . $yaml . "---";
+	}
+
+	/**
+	 * Get output path for a historical revision
+	 *
+	 * @param string $pageTitle
+	 * @param int $sequentialNumber
+	 * @return string
+	 */
+	private function getHistoricalRevisionPath( string $pageTitle, int $sequentialNumber ): string {
+		// Convert "NS:Prefix/Page_Title" to path components
+		$path = strtolower( $pageTitle );
+		$path = str_replace( ':', '/', $path );
+		$path = str_replace( '_', '-', $path );
+
+		// Get the base filename without .md extension
+		$filename = basename( $path, '.md' );
+		$dirname = dirname( $path );
+
+		// Build history path: pages/{namespace}/history/{page-slug}/{page-slug}-v{N}.md
+		if ( $dirname === '.' ) {
+			$historyPath = 'history/' . $filename . '/' . $filename . '-v' . $sequentialNumber . '.md';
+		} else {
+			$historyPath = $dirname . '/history/' . $filename . '/' . $filename . '-v' . $sequentialNumber . '.md';
+		}
+
+		return $this->pagesDir . '/' . $historyPath;
 	}
 }
