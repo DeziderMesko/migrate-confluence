@@ -63,6 +63,11 @@ class WikiJsComposer implements IOutputAwareInterface {
 	private $uploadsDir;
 
 	/**
+	 * @var string
+	 */
+	private $workspacePath;
+
+	/**
 	 * @param array $config
 	 * @param Workspace $workspace
 	 * @param DataBuckets $buckets
@@ -87,8 +92,14 @@ class WikiJsComposer implements IOutputAwareInterface {
 			$this->advancedConfig = $config['config'];
 		}
 
-		// Set up output directories
-		$this->resultDir = $this->workspace->getWorkspacePath() . '/result';
+		// Set up output directories using reflection to access private workspaceDir
+		$reflection = new \ReflectionClass( $this->workspace );
+		$property = $reflection->getProperty( 'workspaceDir' );
+		$property->setAccessible( true );
+		$workspaceDir = $property->getValue( $this->workspace );
+		$this->workspacePath = $workspaceDir->getPathname();
+
+		$this->resultDir = $this->workspacePath . '/result';
 		$this->pagesDir = $this->resultDir . '/pages';
 		$this->uploadsDir = $this->resultDir . '/uploads';
 	}
@@ -150,7 +161,7 @@ class WikiJsComposer implements IOutputAwareInterface {
 		// Merge file lists
 		$allFiles = array_merge( $filesMap ?? [], $additionalFiles ?? [] );
 
-		$imagesSourceDir = $this->workspace->getWorkspacePath() . '/images';
+		$imagesSourceDir = $this->workspacePath . '/images';
 
 		if ( !is_dir( $imagesSourceDir ) ) {
 			$this->output->writeln( "No images directory found, skipping file copy." );
@@ -183,10 +194,8 @@ class WikiJsComposer implements IOutputAwareInterface {
 		$this->output->writeln( "\nCreating Markdown pages..." );
 
 		$pagesRevisions = $this->dataBuckets->getBucketData( 'title-revisions' );
-		$pageIdToTitleMap = $this->dataBuckets->getBucketData( 'page-id-to-title-map' );
-		$spaceIdToPrefixMap = $this->dataBuckets->getBucketData( 'space-id-to-prefix-map' );
 
-		$convertedDir = $this->workspace->getWorkspacePath() . '/converted';
+		$convertedDir = $this->workspacePath . '/content/wikitext';
 
 		if ( !is_dir( $convertedDir ) ) {
 			$this->output->writeln( "No converted directory found!" );
@@ -194,11 +203,21 @@ class WikiJsComposer implements IOutputAwareInterface {
 		}
 
 		$pageCount = 0;
-		foreach ( $pagesRevisions as $pageTitle => $pageRevision ) {
+		foreach ( $pagesRevisions as $pageTitle => $revisions ) {
 			$this->output->writeln( "Processing: $pageTitle" );
 
-			// Find the corresponding .wiki file (now .md after conversion)
-			$wikiFile = $convertedDir . '/' . $pageTitle . '.wiki';
+			// Extract revision ID from the revision string (e.g., "9011735@177-20250310231236")
+			if ( empty( $revisions ) || !isset( $revisions[0] ) ) {
+				$this->output->writeln( "  Warning: No revision data for: $pageTitle" );
+				continue;
+			}
+
+			$revisionString = $revisions[0];
+			$revisionParts = explode( '@', $revisionString );
+			$revisionId = $revisionParts[0];
+
+			// Files are stored by revision ID, not page ID
+			$wikiFile = $convertedDir . '/' . $revisionId . '.wiki';
 
 			if ( !file_exists( $wikiFile ) ) {
 				$this->output->writeln( "  Warning: File not found: $wikiFile" );
@@ -207,6 +226,9 @@ class WikiJsComposer implements IOutputAwareInterface {
 
 			// Read the converted Markdown content
 			$markdown = file_get_contents( $wikiFile );
+
+			// Parse revision info for frontmatter
+			$pageRevision = $this->parseRevisionInfo( $revisionString );
 
 			// Extract metadata for frontmatter
 			$frontmatter = $this->buildFrontmatter( $pageTitle, $pageRevision );
@@ -230,6 +252,46 @@ class WikiJsComposer implements IOutputAwareInterface {
 		}
 
 		$this->output->writeln( "Created $pageCount Markdown pages." );
+	}
+
+	/**
+	 * Parse revision info string to extract timestamp
+	 *
+	 * @param string $revisionString Format: "9011735@177-20250310231236"
+	 * @return array
+	 */
+	private function parseRevisionInfo( string $revisionString ): array {
+		// Parse "9011735@177-20250310231236" format
+		// Format: <revisionId>@<version>-<timestamp>
+		$parts = explode( '@', $revisionString );
+		if ( count( $parts ) < 2 ) {
+			return [];
+		}
+
+		$versionTimestamp = $parts[1];
+		$vtParts = explode( '-', $versionTimestamp );
+		if ( count( $vtParts ) < 2 ) {
+			return [];
+		}
+
+		$timestamp = $vtParts[1];
+		// Convert timestamp format 20250310231236 to ISO 8601
+		if ( strlen( $timestamp ) >= 14 ) {
+			$year = substr( $timestamp, 0, 4 );
+			$month = substr( $timestamp, 4, 2 );
+			$day = substr( $timestamp, 6, 2 );
+			$hour = substr( $timestamp, 8, 2 );
+			$minute = substr( $timestamp, 10, 2 );
+			$second = substr( $timestamp, 12, 2 );
+			$isoDate = "$year-$month-$day" . "T" . "$hour:$minute:$second" . "Z";
+
+			return [
+				'timestamp' => $isoDate,
+				'author' => '', // Not available in this format
+			];
+		}
+
+		return [];
 	}
 
 	/**
